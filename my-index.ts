@@ -23,7 +23,7 @@ function generateCustomCombinations<T>(arr: T[]): T[][] {
       result = result.concat(combinations);
   }
 
-  return result;
+  return result.sort((a, b) => b.length - a.length);
 }
 
 function getPermutations<T>(arr: T[], k: number): T[][] {
