@@ -1,214 +1,118 @@
 import {
-  layer,
   map,
-  NumberKeyValue,
   rule,
-  withMapper,
   writeToProfile,
-  isSideMultiModifierAlias,
-  parseSideMultiModifierAlias,
-  SideModifierAlias,
-  ArrowKeyCode,
-  arrowKeyCodes,
-  ControlOrSymbolKeyCode,
-  controlOrSymbolKeyCodes,
-  fromOnlyKeyCodes,
-  functionKeyCodes,
-  internationalKeyCodes,
-  japaneseKeyCodes,
-  KeyCode,
-  keypadKeyCodes,
-  letterKeyCodes,
-  modifierKeyCodes,
-  numberKeyCodes,
-  otherKeyCodes,
-  pcKeyboardKeyCodes,
-  stickyModifierKeyCodes,
-  toOnlyKeyCodes,
-  simlayer,
   mapSimultaneous,
   toKey,
-  toStickyModifier,
-  BasicParameters,
   toNone,
-} from "karabiner.ts";
+  ModifierParam,
+} from 'https://deno.land/x/karabinerts@1.30.0/deno.ts'
+import { FromAndToKeyCode, FromKeyParam, FromKeyType, ModifierKeyCode, ToKeyParam } from 'https://deno.land/x/karabinerts@1.30.0/index.ts';
+
+function generateCustomCombinations<T>(arr: T[]): T[][] {
+  let result: T[][] = [];
+  const n = arr.length;
+
+  for (let k = 1; k <= n; k++) {
+      let combinations: T[][] = [];
+      if (k <= 2) {
+          combinations = getPermutations(arr, k);
+      } else {
+          combinations = getCombinations(arr, k);
+      }
+      result = result.concat(combinations);
+  }
+
+  return result;
+}
+
+function getPermutations<T>(arr: T[], k: number): T[][] {
+  if (k === 1) {
+      return arr.map((item) => [item]);
+  }
+
+  const permutations: T[][] = [];
+
+  for (let i = 0; i < arr.length; i++) {
+      const currentElement = arr[i];
+      const remainingElements = arr.slice(0, i).concat(arr.slice(i + 1));
+      const subPermutations = getPermutations(remainingElements, k - 1);
+
+      for (const subPermutation of subPermutations) {
+          permutations.push([currentElement, ...subPermutation]);
+      }
+  }
+
+  return permutations;
+}
+
+function getCombinations<T>(arr: T[], k: number): T[][] {
+  const combinations: T[][] = [];
+
+  function helper(start: number, combo: T[]) {
+      if (combo.length === k) {
+          combinations.push([...combo]);
+          return;
+      }
+      for (let i = start; i < arr.length; i++) {
+          combo.push(arr[i]);
+          helper(i + 1, combo);
+          combo.pop();
+      }
+  }
+
+  helper(0, []);
+  return combinations;
+}
+
+const groups: Map<FromAndToKeyCode, ModifierKeyCode>[] = [];
+const left = new Map<FromAndToKeyCode, ModifierKeyCode>();
+const right = new Map<FromAndToKeyCode, ModifierKeyCode>();
+groups.push(left);
+groups.push(right);
+left.set("d", "left_command");
+left.set("s", "left_control");
+left.set("a", "left_shift");
+left.set("f", "left_option");
+right.set("k", "left_command");
+right.set("l", "left_control");
+right.set(";", "left_shift");
+right.set("j", "left_option");
+
+
+function buildCombinations() {
+  const rules = [];
+  for (const group of groups) {
+    const letters = Array.from(group.keys());
+    const combination = generateCustomCombinations(letters);
+    for (const combo of combination) {
+      const modifiers = combo.map(l => group.get(l)!);
+      if (combo.length == 1) {
+        const letter = combo[0];
+        rules.push(map(letter)
+          .toIfAlone(letter, {}, { halt: true })
+          .toDelayedAction(toKey("vk_none"), toKey(letter))
+          .toIfHeldDown(modifiers[0], {}, { halt: true })
+        );
+      }
+      else if (combo.length == 2) {
+        rules.push(mapSimultaneous(combo, { key_down_order: "strict" })
+          .toIfAlone(combo[0])
+          .toIfAlone(combo[1])
+          .toIfHeldDown(modifiers[0], modifiers.slice(1)));
+      } else {
+        rules.push(mapSimultaneous(combo).toIfHeldDown(modifiers[0], modifiers.slice(1)));
+      }
+    }
+  }
+  return rules;
+}
 
 writeToProfile(
-  "Erlend",
+  "Compiled",
   [
-    rule("Caps + Quote -> Hyper").manipulators([
-      map("⇪")
-        .toIfAlone("⇪", {}, { halt: true })
-        .toDelayedAction(toNone(), [
-          toStickyModifier("left_shift", "toggle"),
-          toStickyModifier("left_control", "toggle"),
-          toStickyModifier("left_option", "toggle"),
-          toStickyModifier("left_command", "toggle"),
-        ])
-        .toIfHeldDown("l⇧", "l⌘⌥⌃", { halt: true }),
-      map("'")
-        .toIfAlone("'", {}, { halt: true })
-        .toDelayedAction(toKey("vk_none"), toKey("'"))
-        .toIfHeldDown("r⇧", "r⌘⌥⌃", { halt: true })
-        .parameters({ "basic.to_if_held_down_threshold_milliseconds": 220 }),
-    ]),
-
     // Home row mods
-    rule("Home row mods - shift, ctrl, opt, cmd").manipulators([
-      //
-      // Four - left hand
-      mapSimultaneous(["a", "s", "d", "f"]).toIfHeldDown("l⇧", ["l⌘⌥⌃"]),
-      //
-      // Three - left hand
-      mapSimultaneous(["a", "s", "d"]).toIfHeldDown("l⇧", ["l⌥⌃"]),
-      mapSimultaneous(["a", "d", "f"]).toIfHeldDown("l⇧", ["l⌘⌥"]),
-      mapSimultaneous(["s", "d", "f"]).toIfHeldDown("l⌃", ["l⌘⌥"]),
-      //
-      // Two - left hand
-      mapSimultaneous(["a", "s"], { key_down_order: "strict" })
-        .toIfAlone("a")
-        .toIfAlone("s")
-        .toIfHeldDown("l⇧", "l⌃"),
-      mapSimultaneous(["s", "a"], { key_down_order: "strict" })
-        .toIfAlone("s")
-        .toIfAlone("a")
-        .toIfHeldDown("l⇧", "l⌃"),
-      mapSimultaneous(["a", "d"], { key_down_order: "strict" })
-        .toIfAlone("a")
-        .toIfAlone("d")
-        .toIfHeldDown("l⇧", "l⌥"),
-      mapSimultaneous(["d", "a"], { key_down_order: "strict" })
-        .toIfAlone("d")
-        .toIfAlone("a")
-        .toIfHeldDown("l⇧", "l⌥"),
-      mapSimultaneous(["a", "f"], { key_down_order: "strict" })
-        .toIfAlone("a")
-        .toIfAlone("f")
-        .toIfHeldDown("l⇧", "l⌘"),
-      mapSimultaneous(["f", "a"], { key_down_order: "strict" })
-        .toIfAlone("f")
-        .toIfAlone("a")
-        .toIfHeldDown("l⇧", "l⌘"),
-      mapSimultaneous(["s", "d"], { key_down_order: "strict" })
-        .toIfAlone("s")
-        .toIfAlone("d")
-        .toIfHeldDown("l⌃", "l⌥"),
-      mapSimultaneous(["d", "s"], { key_down_order: "strict" })
-        .toIfAlone("d")
-        .toIfAlone("s")
-        .toIfHeldDown("l⌃", "l⌥"),
-      mapSimultaneous(["s", "f"], { key_down_order: "strict" })
-        .toIfAlone("s")
-        .toIfAlone("f")
-        .toIfHeldDown("l⌃", "l⌘"),
-      mapSimultaneous(["f", "s"], { key_down_order: "strict" })
-        .toIfAlone("f")
-        .toIfAlone("s")
-        .toIfHeldDown("l⌃", "l⌘"),
-      mapSimultaneous(["d", "f"], { key_down_order: "strict" })
-        .toIfAlone("d")
-        .toIfAlone("f")
-        .toIfHeldDown("l⌥", "l⌘"),
-      mapSimultaneous(["f", "d"], { key_down_order: "strict" })
-        .toIfAlone("f")
-        .toIfAlone("d")
-        .toIfHeldDown("l⌥", "l⌘"),
-      //
-      // One - left hand
-      map("a")
-        .toIfAlone("a", {}, { halt: true })
-        .toDelayedAction(toKey("vk_none"), toKey("a"))
-        .toIfHeldDown("l⇧", {}, { halt: true }),
-      map("s")
-        .toIfAlone("s", {}, { halt: true })
-        .toDelayedAction(toKey("vk_none"), toKey("s"))
-        .toIfHeldDown("l⌃", {}, { halt: true }),
-      map("d")
-        .toIfAlone("d", {}, { halt: true })
-        .toDelayedAction(toKey("vk_none"), toKey("d"))
-        .toIfHeldDown("l⌥", {}, { halt: true }),
-      map("f")
-        .toIfAlone("f", {}, { halt: true })
-        .toDelayedAction(toKey("vk_none"), toKey("f", {}, { halt: true }))
-        .toIfHeldDown("l⌘", {}, { halt: true }),
-      //
-      //
-      // Four - right hand
-      mapSimultaneous(["j", "k", "l", ";"]).toIfHeldDown("r⇧", ["r⌘⌥⌃"]),
-      //
-      // Three - right hand
-      mapSimultaneous([";", "l", "k"]).toIfHeldDown("r⇧", ["r⌥⌃"]),
-      mapSimultaneous([";", "k", "j"]).toIfHeldDown("r⇧", ["r⌘⌥"]),
-      mapSimultaneous(["l", "k", "j"]).toIfHeldDown("r⌃", ["r⌘⌥"]),
-      //
-      // Two - right hand
-      mapSimultaneous([";", "l"], { key_down_order: "strict" })
-        .toIfAlone(";")
-        .toIfAlone("l")
-        .toIfHeldDown("r⇧", "r⌃"),
-      mapSimultaneous(["l", ";"], { key_down_order: "strict" })
-        .toIfAlone("l")
-        .toIfAlone(";")
-        .toIfHeldDown("r⇧", "r⌃"),
-      mapSimultaneous([";", "k"], { key_down_order: "strict" })
-        .toIfAlone(";")
-        .toIfAlone("k")
-        .toIfHeldDown("r⇧", "r⌥"),
-      mapSimultaneous(["k", ";"], { key_down_order: "strict" })
-        .toIfAlone("k")
-        .toIfAlone(";")
-        .toIfHeldDown("r⇧", "r⌥"),
-      mapSimultaneous([";", "j"], { key_down_order: "strict" })
-        .toIfAlone(";")
-        .toIfAlone("j")
-        .toIfHeldDown("r⇧", "r⌘"),
-      mapSimultaneous(["j", ";"], { key_down_order: "strict" })
-        .toIfAlone("j")
-        .toIfAlone(";")
-        .toIfHeldDown("r⇧", "r⌘"),
-      mapSimultaneous(["l", "k"], { key_down_order: "strict" })
-        .toIfAlone("l")
-        .toIfAlone("k")
-        .toIfHeldDown("r⌃", "r⌥"),
-      mapSimultaneous(["k", "l"], { key_down_order: "strict" })
-        .toIfAlone("k")
-        .toIfAlone("l")
-        .toIfHeldDown("r⌃", "r⌥"),
-      mapSimultaneous(["l", "j"], { key_down_order: "strict" })
-        .toIfAlone("l")
-        .toIfAlone("j")
-        .toIfHeldDown("r⌃", "r⌘"),
-      mapSimultaneous(["j", "l"], { key_down_order: "strict" })
-        .toIfAlone("j")
-        .toIfAlone("l")
-        .toIfHeldDown("r⌃", "r⌘"),
-      mapSimultaneous(["k", "j"], { key_down_order: "strict" })
-        .toIfAlone("k")
-        .toIfAlone("j")
-        .toIfHeldDown("r⌥", "r⌘"),
-      mapSimultaneous(["j", "k"], { key_down_order: "strict" })
-        .toIfAlone("j")
-        .toIfAlone("k")
-        .toIfHeldDown("r⌥", "r⌘"),
-      //
-      // One - right hand
-      map(";")
-        .toIfAlone(";", {}, { halt: true })
-        .toDelayedAction(toKey("vk_none"), toKey(";"))
-        .toIfHeldDown("r⇧", {}, { halt: true }),
-      map("l")
-        .toIfAlone("l", {}, { halt: true })
-        .toDelayedAction(toKey("vk_none"), toKey("l"))
-        .toIfHeldDown("r⌃", {}, { halt: true }),
-      map("k")
-        .toIfAlone("k", {}, { halt: true })
-        .toDelayedAction(toKey("vk_none"), toKey("k"))
-        .toIfHeldDown("r⌥", {}, { halt: true }),
-      map("j")
-        .toIfAlone("j", {}, { halt: true })
-        .toDelayedAction(toKey("vk_none"), toKey("j"))
-        .toIfHeldDown("r⌘", {}, { halt: true }),
-    ]),
+    rule("Home row mods").manipulators(buildCombinations()),
     //
     // Meh
     rule("R_U = Meh ").manipulators([
