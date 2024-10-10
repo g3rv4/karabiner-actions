@@ -1,26 +1,18 @@
 import {
+  FromAndToKeyCode,
   map,
+  mapSimultaneous,
+  ModifierKeyCode,
   rule,
   writeToProfile,
-  mapSimultaneous,
-  toKey,
-  toNone,
-  ModifierParam,
-} from 'https://deno.land/x/karabinerts@1.30.0/deno.ts'
-import { FromAndToKeyCode, FromKeyParam, FromKeyType, ModifierKeyCode, ToKeyParam } from 'https://deno.land/x/karabinerts@1.30.0/index.ts';
+} from "https://deno.land/x/karabinerts@1.30.0/deno.ts";
 
 function generateCustomCombinations<T>(arr: T[]): T[][] {
   let result: T[][] = [];
-  const n = arr.length;
+  const n = Math.min(arr.length, 3);
 
   for (let k = 1; k <= n; k++) {
-      let combinations: T[][] = [];
-      if (k <= 2) {
-          combinations = getPermutations(arr, k);
-      } else {
-          combinations = getCombinations(arr, k);
-      }
-      result = result.concat(combinations);
+    result = result.concat(getPermutations(arr, k));
   }
 
   return result.sort((a, b) => b.length - a.length);
@@ -28,170 +20,113 @@ function generateCustomCombinations<T>(arr: T[]): T[][] {
 
 function getPermutations<T>(arr: T[], k: number): T[][] {
   if (k === 1) {
-      return arr.map((item) => [item]);
+    return arr.map((item) => [item]);
   }
 
   const permutations: T[][] = [];
 
   for (let i = 0; i < arr.length; i++) {
-      const currentElement = arr[i];
-      const remainingElements = arr.slice(0, i).concat(arr.slice(i + 1));
-      const subPermutations = getPermutations(remainingElements, k - 1);
+    const currentElement = arr[i];
+    const remainingElements = arr.slice(0, i).concat(arr.slice(i + 1));
+    const subPermutations = getPermutations(remainingElements, k - 1);
 
-      for (const subPermutation of subPermutations) {
-          permutations.push([currentElement, ...subPermutation]);
-      }
+    for (const subPermutation of subPermutations) {
+      permutations.push([currentElement, ...subPermutation]);
+    }
   }
 
   return permutations;
 }
 
-function getCombinations<T>(arr: T[], k: number): T[][] {
-  const combinations: T[][] = [];
-
-  function helper(start: number, combo: T[]) {
-      if (combo.length === k) {
-          combinations.push([...combo]);
-          return;
-      }
-      for (let i = start; i < arr.length; i++) {
-          combo.push(arr[i]);
-          helper(i + 1, combo);
-          combo.pop();
-      }
-  }
-
-  helper(0, []);
-  return combinations;
-}
-
-const groups: Map<FromAndToKeyCode, ModifierKeyCode>[] = [];
-const left = new Map<FromAndToKeyCode, ModifierKeyCode>();
-const right = new Map<FromAndToKeyCode, ModifierKeyCode>();
-groups.push(left);
-groups.push(right);
-left.set("d", "left_command");
-left.set("s", "left_control");
-left.set("a", "left_shift");
-left.set("f", "left_option");
-right.set("k", "left_command");
-right.set("l", "left_control");
-right.set(";", "left_shift");
-right.set("j", "left_option");
-
+const letters = new Map<FromAndToKeyCode, ModifierKeyCode>();
+letters.set("d", "left_command");
+letters.set("s", "left_control");
+letters.set("a", "left_shift");
+letters.set("f", "left_option");
+letters.set("k", "right_command");
+letters.set("l", "right_control");
+letters.set("semicolon", "right_shift");
+letters.set("j", "right_option");
 
 function buildCombinations() {
   const rules = [];
-  for (const group of groups) {
-    const letters = Array.from(group.keys());
-    const combination = generateCustomCombinations(letters);
-    for (const combo of combination) {
-      const modifiers = combo.map(l => group.get(l)!);
-      if (combo.length == 1) {
-        const letter = combo[0];
-        rules.push(map(letter)
-          .toIfAlone(letter, {}, { halt: true })
-          .toDelayedAction(toKey("vk_none"), toKey(letter))
-          .toIfHeldDown(modifiers[0], {}, { halt: true })
-        );
-      }
-      else if (combo.length == 2) {
-        rules.push(mapSimultaneous(combo, { key_down_order: "strict" })
-          .toIfAlone(combo[0])
-          .toIfAlone(combo[1])
-          .toIfHeldDown(modifiers[0], modifiers.slice(1)));
-      } else {
-        rules.push(mapSimultaneous(combo).toIfHeldDown(modifiers[0], modifiers.slice(1)));
+  const keys = Array.from(letters.keys());
+  const combination = generateCustomCombinations(keys);
+  for (const combo of combination) {
+    const modifiers = combo.map((l) => letters.get(l)!);
+    if (combo.length == 1) {
+      const letter = combo[0];
+      rules.push(
+        map(letter, null, "any")
+          .toIfAlone(letter)
+          .toIfHeldDown(modifiers[0], {}, { halt: true }),
+      );
+    } else {
+      const rule = mapSimultaneous(combo, { key_down_order: "strict" });
+      rules.push(rule);
+      for (let i = 0; i < combo.length; i++) {
+        if (i == combo.length - 1) {
+          rule.toIfAlone(combo[i], {}, { halt: true });
+        } else {
+          rule.toIfAlone(combo[i]);
+        }
       }
     }
   }
+
   return rules;
 }
 
 writeToProfile(
   "Compiled",
   [
-    // Home row mods
     rule("Home row mods").manipulators(buildCombinations()),
-    //
-    // Meh
-    rule("R_U = Meh ").manipulators([
-      map("r")
-        .toIfAlone("r", {}, { halt: true })
-        .toDelayedAction(toKey("vk_none"), toKey("r"))
-        .toIfHeldDown("l⇧", "l⌥⌃", { halt: true })
-        .parameters({ "basic.to_if_held_down_threshold_milliseconds": 220 }),
-      map("u")
-        .toIfAlone("u", {}, { halt: true })
-        .toDelayedAction(toKey("vk_none"), toKey("u"))
-        .toIfHeldDown("r⇧", "r⌥⌃", { halt: true })
-        .parameters({ "basic.to_if_held_down_threshold_milliseconds": 220 }),
+    rule("Shift + backspace = delete").manipulators([
+      map("delete_or_backspace", "left_shift").to("delete_forward"),
     ]),
-    //
-    // Norwegian Markdown helper
-    rule("Nordic Markdown Helper").manipulators([
-      map("]")
-        .toIfAlone("/", "⇧", { halt: true })
-        .toDelayedAction(toNone(), toKey("/", "⇧"))
-        .toIfHeldDown("\\", "⇧", { halt: true })
-        .toIfHeldDown("\\", "⇧", { halt: true }),
-      map("]", "Meh").to("]"),
-      map("]", "⌥⇧").to("]"),
+    rule("Home, end").manipulators([
+      map("home", null, "any")
+        .condition({
+          "type": "frontmost_application_unless",
+          "bundle_identifiers": [
+            "^com\\.apple\\.Terminal$",
+            "^com\\.googlecode\\.iterm2$",
+          ],
+        })
+        .to("left_arrow", "left_command"),
+      map("end", null, "any")
+        .condition({
+          "type": "frontmost_application_unless",
+          "bundle_identifiers": [
+            "^com\\.apple\\.Terminal$",
+            "^com\\.googlecode\\.iterm2$",
+          ],
+        })
+        .to("right_arrow", "left_command"),
     ]),
-    //
-    // More arrow clicks
-    rule("Meh + Arrow = 5 Arrows | Hyper + Arrow = 10 Arrows").manipulators([
-      map("↑", "Meh").to("↑").to("↑").to("↑").to("↑").to("↑"),
-      map("↓", "Meh").to("↓").to("↓").to("↓").to("↓").to("↓"),
-      map("←", "Meh").to("←").to("←").to("←").to("←").to("←"),
-      map("→", "Meh").to("→").to("→").to("→").to("→").to("→"),
-      map("↑", "Hyper")
-        .to("↑")
-        .to("↑")
-        .to("↑")
-        .to("↑")
-        .to("↑")
-        .to("↑")
-        .to("↑")
-        .to("↑")
-        .to("↑")
-        .to("↑"),
-      map("↓", "Hyper")
-        .to("↓")
-        .to("↓")
-        .to("↓")
-        .to("↓")
-        .to("↓")
-        .to("↓")
-        .to("↓")
-        .to("↓")
-        .to("↓")
-        .to("↓"),
-      map("←", "Hyper")
-        .to("←")
-        .to("←")
-        .to("←")
-        .to("←")
-        .to("←")
-        .to("←")
-        .to("←")
-        .to("←")
-        .to("←")
-        .to("←"),
-      map("→", "Hyper")
-        .to("→")
-        .to("→")
-        .to("→")
-        .to("→")
-        .to("→")
-        .to("→")
-        .to("→")
-        .to("→")
-        .to("→")
-        .to("→"),
+    rule("Home, end, terminal").manipulators([
+      map("home", null, "any")
+        .condition({
+          "type": "frontmost_application_if",
+          "bundle_identifiers": [
+            "^com\\.apple\\.Terminal$",
+            "^com\\.googlecode\\.iterm2$",
+          ],
+        })
+        .to("a", "left_command"),
+      map("end", null, "any")
+        .condition({
+          "type": "frontmost_application_if",
+          "bundle_identifiers": [
+            "^com\\.apple\\.Terminal$",
+            "^com\\.googlecode\\.iterm2$",
+          ],
+        })
+        .to("e", "left_command"),
     ]),
   ],
   {
-    "basic.to_if_held_down_threshold_milliseconds": 120,
+    "basic.to_if_held_down_threshold_milliseconds": 250,
+    "basic.simultaneous_threshold_milliseconds": 50,
   },
 );
