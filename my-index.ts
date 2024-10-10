@@ -42,23 +42,29 @@ const letters = new Map<FromAndToKeyCode, ModifierKeyCode>();
 letters.set("d", "left_command");
 letters.set("s", "left_control");
 letters.set("a", "left_shift");
-letters.set("f", "left_option");
 letters.set("k", "right_command");
 letters.set("l", "right_control");
 letters.set("semicolon", "right_shift");
-letters.set("j", "right_option");
 
 function buildCombinations() {
   const rules = [];
   const keys = Array.from(letters.keys());
-  const combination = generateCustomCombinations(keys);
+  const all_letters = Array.from(
+    { length: 26 },
+    (_, i) => String.fromCharCode(97 + i) as FromAndToKeyCode,
+  );
+  all_letters.push("spacebar");
+  all_letters.push("semicolon");
+  const combination = generateCustomCombinations(all_letters).filter((combo) =>
+    combo.some((item) => keys.includes(item))
+  );
   for (const combo of combination) {
     const modifiers = combo.map((l) => letters.get(l)!);
     if (combo.length == 1) {
       const letter = combo[0];
       rules.push(
         map(letter, null, "any")
-          .toIfAlone(letter)
+          .toIfAlone(letter, {}, { halt: true })
           .toIfHeldDown(modifiers[0], {}, { halt: true }),
       );
     } else {
@@ -81,6 +87,11 @@ writeToProfile(
   "Compiled",
   [
     rule("Home row mods").manipulators(buildCombinations()),
+    rule("Right shift -> Hyper").manipulators([
+      map("right_shift", null, "any").toIfHeldDown(
+        "right_control", ["right_option", "right_command", "right_shift"],
+      ),
+    ]),
     rule("Shift + backspace = delete").manipulators([
       map("delete_or_backspace", "left_shift").to("delete_forward"),
     ]),
@@ -126,7 +137,7 @@ writeToProfile(
     ]),
   ],
   {
-    "basic.to_if_held_down_threshold_milliseconds": 250,
-    "basic.simultaneous_threshold_milliseconds": 50,
+    "basic.to_if_held_down_threshold_milliseconds": 120,
+    "basic.simultaneous_threshold_milliseconds": 120,
   },
 );
